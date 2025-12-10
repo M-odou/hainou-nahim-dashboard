@@ -77,12 +77,12 @@ const INITIAL_MEMBERS: Member[] = [
   }
 ];
 
-// Initial Super Admin
+// Initial Super Admin (Updated to test/test)
 const INITIAL_USERS: User[] = [
   {
     id: 'super-admin-1',
-    username: 'admin',
-    password: 'password',
+    username: 'test',
+    password: 'test',
     fullName: 'Super Administrateur',
     role: UserRole.SUPER_ADMIN
   }
@@ -90,7 +90,7 @@ const INITIAL_USERS: User[] = [
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('dahira_user');
+    const saved = localStorage.getItem('dahira_user_v3');
     return saved ? JSON.parse(saved) : null;
   });
 
@@ -99,8 +99,9 @@ function App() {
     return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
   });
   
+  // Changed key to v3 to force reset to new default user
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('dahira_users');
+    const saved = localStorage.getItem('dahira_users_v3');
     return saved ? JSON.parse(saved) : INITIAL_USERS;
   });
   
@@ -113,19 +114,19 @@ function App() {
   }, [members]);
 
   useEffect(() => {
-    localStorage.setItem('dahira_users', JSON.stringify(users));
+    localStorage.setItem('dahira_users_v3', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('dahira_user', JSON.stringify(currentUser));
+      localStorage.setItem('dahira_user_v3', JSON.stringify(currentUser));
       // Update current user from users list in case it was modified by super admin or self
       const freshUser = users.find(u => u.id === currentUser.id);
       if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(currentUser)) {
          setCurrentUser(freshUser);
       }
     } else {
-      localStorage.removeItem('dahira_user');
+      localStorage.removeItem('dahira_user_v3');
     }
   }, [currentUser, users]);
 

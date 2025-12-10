@@ -42,6 +42,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
 
         <div className="p-8">
+          {/* Demo Credentials Box */}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-6 text-sm text-blue-800 text-center animate-pulse">
+            <p className="font-medium mb-1">Identifiants de démonstration :</p>
+            <div className="flex justify-center gap-4 text-xs">
+               <p>ID: <span className="font-mono font-bold">test</span></p>
+               <p>Pass: <span className="font-mono font-bold">test</span></p>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-100 animate-in shake">
@@ -58,7 +67,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-slate-200 bg-slate-50 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all duration-300 placeholder:text-slate-300"
-                  placeholder="admin"
+                  placeholder="Ex: test"
                 />
               </div>
             </div>
