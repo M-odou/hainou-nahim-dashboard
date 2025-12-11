@@ -8,189 +8,268 @@ import { MemberDetailModal } from './components/MemberDetailModal';
 import { UserManagement } from './components/UserManagement';
 import { Profile } from './components/Profile';
 import { Member, Role, Gender, User, UserRole } from './types';
-
-// Mock Members
-const INITIAL_MEMBERS: Member[] = [
-  {
-    id: '1',
-    firstName: 'Amadou',
-    lastName: 'Sow',
-    phone: '771234567',
-    role: Role.DIEUWRIGN,
-    gender: Gender.HOMME,
-    annualFee: 10000,
-    cardNumber: 'DHR-001',
-    joinDate: '2023-01-15',
-    profession: 'Enseignant',
-    photoUrl: 'https://picsum.photos/seed/amadou/200'
-  },
-  {
-    id: '2',
-    firstName: 'Fatou',
-    lastName: 'Ndiaye',
-    phone: '778901234',
-    role: Role.DIEUWRIGN_COM_FIN,
-    gender: Gender.FEMME,
-    annualFee: 10000,
-    cardNumber: 'DHR-002',
-    joinDate: '2023-02-10',
-    profession: 'Comptable',
-    photoUrl: 'https://picsum.photos/seed/fatou/200'
-  },
-  {
-    id: '3',
-    firstName: 'Ibrahima',
-    lastName: 'Fall',
-    phone: '762223344',
-    role: Role.MEMBRE,
-    gender: Gender.HOMME,
-    annualFee: 5000,
-    cardNumber: 'DHR-003',
-    joinDate: '2023-03-05',
-    profession: 'Commerçant'
-  },
-  {
-    id: '4',
-    firstName: 'Amina',
-    lastName: 'Diop',
-    phone: '709998877',
-    role: Role.DIEUWRIGN_SOKHNA_YI,
-    gender: Gender.FEMME,
-    annualFee: 7500,
-    cardNumber: 'DHR-004',
-    joinDate: '2023-04-20',
-    profession: 'Infirmière',
-    photoUrl: 'https://picsum.photos/seed/amina/200'
-  },
-  {
-    id: '5',
-    firstName: 'Moussa',
-    lastName: 'Ba',
-    phone: '',
-    role: Role.MEMBRE,
-    gender: Gender.ENFANT,
-    annualFee: 2000,
-    cardNumber: 'DHR-005',
-    joinDate: '2023-06-01',
-    guardianName: 'Fatou Ndiaye',
-    guardianPhone: '778901234'
-  }
-];
-
-// Initial Super Admin (Updated to test/test)
-const INITIAL_USERS: User[] = [
-  {
-    id: 'super-admin-1',
-    username: 'test',
-    password: 'test',
-    fullName: 'Super Administrateur',
-    role: UserRole.SUPER_ADMIN
-  }
-];
+import { supabase } from './lib/supabaseClient';
 
 function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('dahira_user_v3');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [members, setMembers] = useState<Member[]>(() => {
-    const saved = localStorage.getItem('dahira_members');
-    return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
-  });
-  
-  // Changed key to v3 to force reset to new default user
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('dahira_users_v3');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
-  });
-  
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [users, setUsers] = useState<User[]>([]); // This would ideally come from a profiles table
   const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'add' | 'profile' | 'users'>('dashboard');
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // --- Initial Loading ---
   useEffect(() => {
-    localStorage.setItem('dahira_members', JSON.stringify(members));
-  }, [members]);
-
-  useEffect(() => {
-    localStorage.setItem('dahira_users_v3', JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('dahira_user_v3', JSON.stringify(currentUser));
-      // Update current user from users list in case it was modified by super admin or self
-      const freshUser = users.find(u => u.id === currentUser.id);
-      if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(currentUser)) {
-         setCurrentUser(freshUser);
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+        fetchMembers();
+      } else {
+        setLoading(false);
       }
-    } else {
-      localStorage.removeItem('dahira_user_v3');
-    }
-  }, [currentUser, users]);
+    });
 
-  const handleLogin = (u: string, p: string) => {
-    const user = users.find(user => user.username === u && user.password === p);
-    if (user) {
-      setCurrentUser(user);
-      return true;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+        fetchMembers();
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- Data Fetching helpers ---
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      // Fetch profile from 'profiles' table
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setCurrentUser({
+          id: data.id,
+          username: data.username || '', // or email
+          fullName: data.full_name || '',
+          role: data.role as UserRole,
+          photoUrl: data.photo_url,
+          password: '' // Password is handled by Auth, not stored here
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
     }
-    return false;
   };
 
-  const handleLogout = () => {
+  const fetchMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const mappedMembers: Member[] = data.map(m => ({
+          id: m.id,
+          firstName: m.first_name,
+          lastName: m.last_name,
+          phone: m.phone || '',
+          role: m.role as Role,
+          gender: m.gender as Gender,
+          annualFee: Number(m.annual_fee),
+          cardNumber: m.card_number,
+          joinDate: m.join_date,
+          profession: m.profession,
+          guardianName: m.guardian_name,
+          guardianPhone: m.guardian_phone,
+          photoUrl: m.photo_url
+        }));
+        setMembers(mappedMembers);
+      }
+    } catch (error) {
+      console.error('Error fetching members:', error);
+      alert('Erreur lors du chargement des membres');
+    }
+  };
+
+  const fetchAllUsers = async () => {
+     // This fetch is for the "User Management" tab (Super Admin)
+     try {
+       const { data, error } = await supabase.from('profiles').select('*');
+       if (error) throw error;
+       if (data) {
+          const mappedUsers: User[] = data.map(u => ({
+            id: u.id,
+            username: u.username || 'user',
+            fullName: u.full_name,
+            role: u.role as UserRole,
+            photoUrl: u.photo_url,
+            password: ''
+          }));
+          setUsers(mappedUsers);
+       }
+     } catch (err) {
+       console.error(err);
+     }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'users' && currentUser?.role === UserRole.SUPER_ADMIN) {
+      fetchAllUsers();
+    }
+  }, [activeTab, currentUser]);
+
+
+  // --- Actions ---
+
+  const handleLogin = async (email: string, pass: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
+    setMembers([]);
     setActiveTab('dashboard');
   };
 
-  const handleAddMember = (member: Member) => {
+  const handleAddMember = async (member: Member) => {
+    // Map to DB columns
+    const dbMember = {
+      first_name: member.firstName,
+      last_name: member.lastName,
+      phone: member.phone,
+      role: member.role,
+      gender: member.gender,
+      annual_fee: member.annualFee,
+      card_number: member.cardNumber,
+      join_date: member.joinDate,
+      profession: member.profession,
+      guardian_name: member.guardianName,
+      guardian_phone: member.guardianPhone,
+      photo_url: member.photoUrl
+    };
+
     if (editingMember) {
-      // Update logic
-      setMembers(prev => prev.map(m => m.id === member.id ? member : m));
-      setEditingMember(null);
-      alert("Membre mis à jour avec succès!");
+      // Update
+      const { error } = await supabase
+        .from('members')
+        .update(dbMember)
+        .eq('id', editingMember.id);
+
+      if (error) {
+        alert('Erreur lors de la mise à jour: ' + error.message);
+        return;
+      }
+      alert('Membre mis à jour !');
     } else {
-      // Create logic
-      setMembers(prev => [member, ...prev]);
-      alert("Nouveau membre ajouté avec succès!");
+      // Create
+      const { error } = await supabase
+        .from('members')
+        .insert([dbMember]);
+      
+      if (error) {
+        alert("Erreur lors de l'ajout: " + error.message);
+        return;
+      }
+      alert('Nouveau membre ajouté !');
     }
-    setActiveTab('members');
-  };
 
-  const handleEditClick = (member: Member) => {
-    setEditingMember(member);
-    setActiveTab('add');
-  };
-
-  const handleDeleteMember = (id: string) => {
-    setMembers(prev => prev.filter(m => m.id !== id));
-  };
-
-  const handleCancelForm = () => {
     setEditingMember(null);
+    fetchMembers(); // Refresh list
     setActiveTab('members');
   };
 
-  // User Management
-  const handleSaveUser = (user: User) => {
-    if (users.find(u => u.id === user.id)) {
-      setUsers(prev => prev.map(u => u.id === user.id ? user : u));
+  const handleDeleteMember = async (id: string) => {
+    const { error } = await supabase.from('members').delete().eq('id', id);
+    if (error) {
+      alert("Erreur: " + error.message);
     } else {
-      setUsers(prev => [...prev, user]);
+      fetchMembers();
     }
   };
 
-  const handleDeleteUser = (id: string) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
+  // User Management (Simplified for this demo: updating profiles table)
+  // Note: Creating new Auth users from client side requires specific setup or Edge Functions usually.
+  const handleSaveUser = async (user: User) => {
+    // For this demo, we assume we just update the profile data. 
+    // Creating a real Auth user usually happens via SignUp page or Admin API.
+    const { error } = await supabase.from('profiles').upsert({
+       id: user.id, // If creating, this might be tricky without Auth ID
+       username: user.username,
+       full_name: user.fullName,
+       role: user.role,
+       photo_url: user.photoUrl
+    });
+    
+    if (error) alert("Erreur: " + error.message);
+    else {
+      fetchAllUsers();
+      alert("Utilisateur mis à jour.");
+    }
+  };
+  
+  const handleDeleteUser = async (id: string) => {
+     // Warning: Deleting from profiles does not delete from Auth users without trigger
+     const { error } = await supabase.from('profiles').delete().eq('id', id);
+     if (error) alert("Erreur: " + error.message);
+     else fetchAllUsers();
   };
 
-  const handleUpdateProfile = (updatedUser: User) => {
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    setCurrentUser(updatedUser);
+  const handleUpdateProfile = async (updatedUser: User) => {
+    const { error } = await supabase.from('profiles').update({
+       full_name: updatedUser.fullName,
+       photo_url: updatedUser.photoUrl
+    }).eq('id', currentUser?.id);
+
+    if (error) {
+       alert("Erreur: " + error.message);
+    } else {
+       // Refresh local state
+       if (currentUser) {
+         setCurrentUser({...currentUser, ...updatedUser});
+       }
+       alert("Profil mis à jour");
+    }
+    
+    // Note: Password update requires supabase.auth.updateUser({ password: ... })
+    if (updatedUser.password) {
+       const { error: passError } = await supabase.auth.updateUser({ password: updatedUser.password });
+       if (passError) alert("Erreur mot de passe: " + passError.message);
+       else alert("Mot de passe mis à jour.");
+    }
   };
 
   const existingCardNumbers = members.map(m => m.cardNumber);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-brand-600">Chargement...</div>;
+  }
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
@@ -221,7 +300,10 @@ function App() {
           </div>
           <MemberTable 
             members={members} 
-            onEdit={handleEditClick} 
+            onEdit={(m) => {
+              setEditingMember(m);
+              setActiveTab('add');
+            }} 
             onDelete={handleDeleteMember}
             onView={setViewingMember} 
           />
@@ -232,7 +314,10 @@ function App() {
         <MemberForm 
           existingMember={editingMember}
           onSave={handleAddMember}
-          onCancel={handleCancelForm}
+          onCancel={() => {
+            setEditingMember(null);
+            setActiveTab('members');
+          }}
           existingCardNumbers={existingCardNumbers}
         />
       )}
@@ -253,7 +338,6 @@ function App() {
         />
       )}
 
-      {/* Detail Modal */}
       {viewingMember && (
         <MemberDetailModal 
           member={viewingMember} 

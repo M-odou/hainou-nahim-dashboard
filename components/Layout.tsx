@@ -10,25 +10,32 @@ interface LayoutProps {
   currentUser: User;
 }
 
+const NavItem = ({ tab, icon: Icon, label, activeTab, onNavigate, closeMenu }: { 
+  tab: 'dashboard' | 'members' | 'add' | 'profile' | 'users', 
+  icon: any, 
+  label: string,
+  activeTab: string,
+  onNavigate: any,
+  closeMenu: () => void
+}) => (
+  <button
+    onClick={() => {
+      onNavigate(tab);
+      closeMenu();
+    }}
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
+      activeTab === tab || (tab === 'members' && activeTab === 'add')
+        ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' 
+        : 'text-slate-600 hover:bg-slate-100'
+    }`}
+  >
+    <Icon size={20} />
+    <span className="font-medium">{label}</span>
+  </button>
+);
+
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onNavigate, onLogout, currentUser }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-
-  const NavItem = ({ tab, icon: Icon, label }: { tab: 'dashboard' | 'members' | 'add' | 'profile' | 'users', icon: any, label: string }) => (
-    <button
-      onClick={() => {
-        onNavigate(tab);
-        setIsMobileMenuOpen(false);
-      }}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-        activeTab === tab || (tab === 'members' && activeTab === 'add')
-          ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' 
-          : 'text-slate-600 hover:bg-slate-100'
-      }`}
-    >
-      <Icon size={20} />
-      <span className="font-medium">{label}</span>
-    </button>
-  );
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -54,13 +61,34 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onNavigate,
         </div>
         
         <nav className="p-4 space-y-2">
-          <NavItem tab="dashboard" icon={LayoutDashboard} label="Tableau de bord" />
-          <NavItem tab="members" icon={Users} label="Membres" />
+          <NavItem 
+            tab="dashboard" 
+            icon={LayoutDashboard} 
+            label="Tableau de bord" 
+            activeTab={activeTab} 
+            onNavigate={onNavigate} 
+            closeMenu={() => setIsMobileMenuOpen(false)} 
+          />
+          <NavItem 
+            tab="members" 
+            icon={Users} 
+            label="Membres" 
+            activeTab={activeTab} 
+            onNavigate={onNavigate} 
+            closeMenu={() => setIsMobileMenuOpen(false)} 
+          />
           
           {currentUser.role === UserRole.SUPER_ADMIN && (
              <>
                <div className="my-2 border-t border-slate-100"></div>
-               <NavItem tab="users" icon={ShieldCheck} label="Gestion Accès" />
+               <NavItem 
+                 tab="users" 
+                 icon={ShieldCheck} 
+                 label="Gestion Accès" 
+                 activeTab={activeTab} 
+                 onNavigate={onNavigate} 
+                 closeMenu={() => setIsMobileMenuOpen(false)} 
+               />
              </>
           )}
         </nav>

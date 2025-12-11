@@ -16,6 +16,19 @@ interface DashboardProps {
 // Updated colors to match the blue theme (Primary: #13395F)
 const COLORS = ['#13395F', '#f43f5e', '#3b82f6', '#f59e0b'];
 
+const StatCard = ({ title, value, icon: Icon, color, subtext }: any) => (
+  <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 flex items-start justify-between hover:shadow-md transition-shadow">
+    <div>
+      <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
+      <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
+      {subtext && <p className="text-xs text-slate-400 mt-1">{subtext}</p>}
+    </div>
+    <div className={`p-3 rounded-lg ${color}`}>
+      <Icon size={24} className="text-white" />
+    </div>
+  </div>
+);
+
 export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
   // Calculations
   const totalMembers = members.length;
@@ -59,20 +72,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
   const displayTimeline = timelineData.length > 20 
     ? timelineData.filter((_, i) => i % Math.ceil(timelineData.length / 20) === 0)
     : timelineData;
-
-
-  const StatCard = ({ title, value, icon: Icon, color, subtext }: any) => (
-    <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 flex items-start justify-between hover:shadow-md transition-shadow">
-      <div>
-        <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-        <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-        {subtext && <p className="text-xs text-slate-400 mt-1">{subtext}</p>}
-      </div>
-      <div className={`p-3 rounded-lg ${color}`}>
-        <Icon size={24} className="text-white" />
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-6">

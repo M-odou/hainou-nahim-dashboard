@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, ArrowRight } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (username: string, password: string) => boolean;
+  onLogin: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
@@ -11,21 +11,21 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // Simulation de délai réseau pour voir l'animation de chargement
-    setTimeout(() => {
-        const success = onLogin(username, password);
-        if (success) {
-            // Login successful
-        } else {
-            setError('Identifiant ou mot de passe incorrect');
-            setLoading(false);
-        }
-    }, 800);
+    try {
+      const result = await onLogin(username, password);
+      if (!result.success) {
+        setError(result.error || 'Identifiant ou mot de passe incorrect');
+      }
+    } catch (err) {
+      setError('Une erreur est survenue lors de la connexion');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,21 +55,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
 
         <div className="p-8">
-          {/* Demo Credentials Box */}
-          <div 
-            className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-6 text-sm text-blue-800 text-center shadow-sm animate-fade-in"
-            style={{ animationDelay: '0.4s' }}
-          >
-            <p className="font-medium mb-1 flex items-center justify-center gap-2">
-              <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-              Identifiants de démonstration
-            </p>
-            <div className="flex justify-center gap-4 text-xs mt-1 bg-white/50 py-1 rounded border border-blue-100/50">
-               <p>ID: <span className="font-mono font-bold text-brand-700">test</span></p>
-               <p>Pass: <span className="font-mono font-bold text-brand-700">test</span></p>
-            </div>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-100 animate-shake shadow-sm flex items-center justify-center gap-2">
@@ -79,17 +64,18 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             )}
             
             <div className="space-y-2 animate-fade-in-up" style={{ animationDelay: '0.5s', opacity: 0 }}>
-              <label className="text-xs font-semibold text-slate-500 ml-1 uppercase tracking-wider">Identifiant</label>
+              <label className="text-xs font-semibold text-slate-500 ml-1 uppercase tracking-wider">Email</label>
               <div className="relative group">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors duration-300">
                   <User size={18} />
                 </div>
                 <input
-                  type="text"
+                  type="email"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3.5 border border-slate-200 bg-slate-50 text-slate-800 rounded-xl focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all duration-300 placeholder:text-slate-300 shadow-sm"
-                  placeholder="Ex: test"
+                  placeholder="votre@email.com"
+                  required
                 />
               </div>
             </div>
@@ -106,6 +92,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3.5 border border-slate-200 bg-slate-50 text-slate-800 rounded-xl focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all duration-300 placeholder:text-slate-300 shadow-sm"
                   placeholder="••••••••"
+                  required
                 />
               </div>
             </div>
@@ -130,7 +117,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           
           <div className="mt-8 text-center animate-fade-in" style={{ animationDelay: '0.8s' }}>
              <p className="text-xs text-slate-400">
-               Problème de connexion ? <span className="text-brand-600 font-medium cursor-pointer hover:underline">Contactez le support</span>
+               Pas encore de compte ? Contactez l'administrateur.
              </p>
           </div>
         </div>
