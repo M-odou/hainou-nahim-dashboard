@@ -123,7 +123,7 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-6">
         {error && (
           <div className="bg-red-50 text-red-600 p-3 rounded-lg flex items-center gap-2 text-sm border border-red-100 animate-in shake">
             <AlertCircle size={16} />
@@ -160,7 +160,7 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Personal Info */}
-          <div className="space-y-5">
+          <div className="space-y-5 min-w-0">
              <div>
               <label className={labelClass}>Prénom *</label>
               <input
@@ -225,7 +225,7 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
           </div>
 
           {/* Dahira & Professional Info */}
-          <div className="space-y-5">
+          <div className="space-y-5 min-w-0">
             <div>
               <label className={labelClass}>
                 {formData.gender === Gender.ENFANT ? 'Téléphone (optionnel)' : 'Téléphone *'}
@@ -279,7 +279,7 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-               <div>
+               <div className="min-w-0">
                 <label className={labelClass}>Cotisation (FCFA)</label>
                 <input
                   name="annualFee"
@@ -289,9 +289,9 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
                   className={inputClass}
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className={labelClass}>Date d'adhésion</label>
-                <div className="relative">
+                <div className="relative w-full">
                   <input
                     name="joinDate"
                     type="date"
