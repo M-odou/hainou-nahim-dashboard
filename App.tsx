@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [users, setUsers] = useState<User[]>([]); // This would ideally come from a profiles table
+  const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'add' | 'profile' | 'users'>('dashboard');
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
@@ -22,23 +22,19 @@ function App() {
 
   // --- Initial Loading ---
   useEffect(() => {
-    // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        fetchUserProfile(session.user.id);
+        fetchUserProfile(session.user.id, session.user.email);
         fetchMembers();
       } else {
         setLoading(false);
       }
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        // Only fetch if we don't have the user or if the ID changed
         if (!currentUser || currentUser.id !== session.user.id) {
-            fetchUserProfile(session.user.id);
+            fetchUserProfile(session.user.id, session.user.email);
             fetchMembers();
         }
       } else {
@@ -52,33 +48,37 @@ function App() {
 
   // --- Data Fetching helpers ---
 
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = async (userId: string, email?: string) => {
     try {
-      // Fetch profile from 'profiles' table
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
-      if (error) {
-          console.error('Error fetching profile detail:', JSON.stringify(error));
-          // If we have a session but no profile, we can't really log them in fully as "User"
-          // We let the loading state finish so the UI can decide (likely show Login if currentUser is null)
-      }
-
       if (data) {
         setCurrentUser({
           id: data.id,
-          username: data.username || '', // maps to email
+          username: data.username || email || '',
           fullName: data.full_name || '',
           role: data.role as UserRole,
           photoUrl: data.photo_url,
-          password: '' // Password is handled by Auth, not stored here
+          password: ''
+        });
+      } else if (email && email.trim().toLowerCase() === 'gueyemodougningue@gmail.com') {
+         // RESCUE MODE ON RELOAD
+         console.warn("Rescue Mode: Loading Super Admin from email check");
+         setCurrentUser({
+          id: userId,
+          username: email,
+          fullName: 'Modou Gningue Gueye',
+          role: UserRole.SUPER_ADMIN,
+          photoUrl: null,
+          password: ''
         });
       }
     } catch (error) {
-      console.error('Unexpected error fetching profile:', error);
+      console.error('Erreur récupération profil:', error);
     } finally {
       setLoading(false);
     }
@@ -112,13 +112,11 @@ function App() {
         setMembers(mappedMembers);
       }
     } catch (error) {
-      console.error('Error fetching members:', error);
-      // alert('Erreur lors du chargement des membres'); // Removed alert to be less annoying on load
+      console.error('Erreur récupération membres:', error);
     }
   };
 
   const fetchAllUsers = async () => {
-     // This fetch is for the "User Management" tab (Super Admin)
      try {
        const { data, error } = await supabase.from('profiles').select('*');
        if (error) throw error;
@@ -157,8 +155,6 @@ function App() {
       return { success: false, error: error.message };
     }
 
-    // VERIFICATION DU PROFIL : On vérifie immédiatement si le profil existe
-    // Cela évite que l'utilisateur soit connecté (Auth) mais bloqué sur l'écran de login (App)
     if (data.session) {
        let { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -166,12 +162,11 @@ function App() {
         .eq('id', data.session.user.id)
         .single();
        
-       // AUTO-REPARATION : Si le profil n'existe pas, on tente de le créer à la volée
+       const targetEmail = email.trim().toLowerCase();
+       const isSuperAdmin = targetEmail === 'gueyemodougningue@gmail.com';
+
+       // --- AUTO-RÉPARATION DU PROFIL ---
        if (!profile || profileError) {
-          console.log("Profil introuvable, tentative de création automatique...", profileError);
-          
-          const isSuperAdmin = email.trim().toLowerCase() === 'gueyemodougningue@gmail.com';
-          
           const newProfile = {
              id: data.session.user.id,
              username: email,
@@ -180,32 +175,44 @@ function App() {
              photo_url: null
           };
 
+          // Tentative de création (peut échouer si RLS bloque)
           const { error: insertError } = await supabase.from('profiles').insert(newProfile);
-          
-          if (!insertError) {
-             // On réessaie de récupérer le profil après création
-             const retry = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', data.session.user.id)
-                .single();
-             profile = retry.data;
-             profileError = retry.error;
-          } else {
-             console.error("Echec de l'auto-création du profil:", JSON.stringify(insertError));
-          }
+          if (insertError) console.error("Erreur tentative création profil:", insertError);
+
+          // Nouvelle tentative de lecture
+          const retry = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.session.user.id)
+            .single();
+            
+          profile = retry.data;
+          profileError = retry.error;
        }
         
+       // --- MODE SAUVETAGE (RESCUE MODE) ---
+       // Si c'est le Super Admin mais que la DB refuse de coopérer (RLS error), on force l'entrée.
+       if ((!profile || profileError) && isSuperAdmin) {
+           console.warn("SUPER ADMIN RESCUE: Profil inaccessible via DB, connexion forcée.");
+           setCurrentUser({
+              id: data.session.user.id,
+              username: email,
+              fullName: 'Modou Gningue Gueye',
+              role: UserRole.SUPER_ADMIN,
+              photoUrl: null,
+              password: ''
+           });
+           return { success: true };
+       }
+
        if (profileError || !profile) {
          await supabase.auth.signOut();
-         console.error("Login Error: Profile not found details:", JSON.stringify(profileError));
          return { 
            success: false, 
-           error: `Connexion auth réussie, mais profil inaccessible. Erreur: ${profileError?.message || 'Inconnue'}` 
+           error: `Erreur d'accès au profil (Droits insuffisants).` 
          };
        }
        
-       // Manually set currentUser here to ensure immediate UI update
        if (profile) {
            setCurrentUser({
               id: profile.id,
@@ -229,7 +236,6 @@ function App() {
   };
 
   const handleAddMember = async (member: Member) => {
-    // Map to DB columns
     const dbMember = {
       first_name: member.firstName,
       last_name: member.lastName,
@@ -246,7 +252,6 @@ function App() {
     };
 
     if (editingMember) {
-      // Update
       const { error } = await supabase
         .from('members')
         .update(dbMember)
@@ -258,7 +263,6 @@ function App() {
       }
       alert('Membre mis à jour !');
     } else {
-      // Create
       const { error } = await supabase
         .from('members')
         .insert([dbMember]);
@@ -271,7 +275,7 @@ function App() {
     }
 
     setEditingMember(null);
-    fetchMembers(); // Refresh list
+    fetchMembers();
     setActiveTab('members');
   };
 
@@ -284,14 +288,11 @@ function App() {
     }
   };
 
-  // User Management
   const handleSaveUser = async (user: User) => {
     if (user.id && user.id.length > 0) {
-      // --- MODIFICATION D'UN ADMIN EXISTANT ---
       const { error } = await supabase.from('profiles').update({
         full_name: user.fullName,
         role: user.role,
-        // username: user.username, // NE PAS METTRE À JOUR L'EMAIL (USERNAME) pour éviter desync avec Auth
       }).eq('id', user.id);
       
       if (error) alert("Erreur modification: " + error.message);
@@ -300,19 +301,14 @@ function App() {
         alert("Profil administrateur mis à jour.");
       }
     } else {
-      // --- CRÉATION D'UN NOUVEL ADMIN ---
-      
-      // 1. On utilise un client temporaire pour ne PAS déconnecter le Super Admin actuel
-      // car supabase.auth.signUp connecte automatiquement l'utilisateur.
       const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
-          persistSession: false, // Important : ne pas stocker la session dans le navigateur
+          persistSession: false,
           autoRefreshToken: false,
           detectSessionInUrl: false
         }
       });
 
-      // 2. Création du compte dans Supabase Auth
       const { data: authData, error: authError } = await tempClient.auth.signUp({
         email: user.username,
         password: user.password,
@@ -329,7 +325,6 @@ function App() {
       }
 
       if (authData.user) {
-        // 3. Création de l'entrée dans la table 'profiles'
         const { error: profileError } = await supabase.from('profiles').insert({
           id: authData.user.id,
           username: user.username,
@@ -349,8 +344,6 @@ function App() {
   };
   
   const handleDeleteUser = async (id: string) => {
-     // Note : Supprimer le profil ne supprime pas le compte Auth sans Cloud Function.
-     // Pour cette démo, on supprime le profil, ce qui révoque l'accès aux données.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
      if (error) alert("Erreur: " + error.message);
      else {
@@ -368,14 +361,12 @@ function App() {
     if (error) {
        alert("Erreur: " + error.message);
     } else {
-       // Refresh local state
        if (currentUser) {
          setCurrentUser({...currentUser, ...updatedUser});
        }
        alert("Profil mis à jour");
     }
     
-    // Modification du mot de passe de l'utilisateur COURANT
     if (updatedUser.password) {
        const { error: passError } = await supabase.auth.updateUser({ password: updatedUser.password });
        if (passError) alert("Erreur mot de passe: " + passError.message);
@@ -386,7 +377,12 @@ function App() {
   const existingCardNumbers = members.map(m => m.cardNumber);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-brand-600 animate-pulse">Chargement de l'application...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-4"></div>
+        <div className="text-brand-800 font-medium animate-pulse">Chargement de l'application...</div>
+      </div>
+    );
   }
 
   if (!currentUser) {

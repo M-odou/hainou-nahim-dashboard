@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Trash2, Edit2, Phone, Baby, User, Eye, Download } from 'lucide-react';
+import { Search, Filter, Trash2, Edit2, Phone, Baby, User, Eye, Download, MessageCircle } from 'lucide-react';
 import { Member, Gender, Role } from '../types';
 
 interface MemberTableProps {
@@ -44,7 +44,6 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
   };
 
   const handleExport = () => {
-    // 1. Prepare CSV Headers
     const headers = [
       "ID Carte",
       "Prénom",
@@ -59,7 +58,6 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
       "Tuteur (Tél)"
     ];
 
-    // 2. Prepare Data Rows
     const rows = filteredMembers.map(m => [
       m.cardNumber,
       m.firstName,
@@ -74,7 +72,6 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
       m.guardianPhone || '-'
     ]);
 
-    // 3. Construct CSV String with BOM for Excel compatibility
     const csvContent = [
       headers.join(';'),
       ...rows.map(e => e.join(';'))
@@ -82,7 +79,6 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     
-    // 4. Trigger Download
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -207,6 +203,17 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
                         >
                           <Eye size={16} />
                         </button>
+                        {(member.phone || member.guardianPhone) && (
+                          <a 
+                            href={`https://wa.me/${(member.guardianPhone || member.phone).replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                            title="Contacter sur WhatsApp"
+                          >
+                            <MessageCircle size={16} />
+                          </a>
+                        )}
                         <button 
                           onClick={() => onEdit(member)}
                           className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all" 
@@ -236,7 +243,6 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onDel
           </table>
         </div>
 
-        {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="p-4 border-t border-slate-100 flex justify-between items-center">
             <span className="text-xs text-slate-500">

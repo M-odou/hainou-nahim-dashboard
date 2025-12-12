@@ -30,7 +30,11 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Auto-uppercase for card number
+    const finalValue = name === 'cardNumber' ? value.toUpperCase() : value;
+
+    setFormData(prev => ({ ...prev, [name]: finalValue }));
     setError(null);
   };
 
@@ -54,8 +58,6 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
       return;
     }
 
-    // Phone validation (Simple check for digits and length) - Optional for child if not provided, but usually child has no phone
-    // We enforce phone for Adult, or Guardian Phone for Child
     if (formData.gender !== Gender.ENFANT && !formData.phone) {
        setError("Le numéro de téléphone est obligatoire pour les adultes.");
        return;
@@ -82,7 +84,6 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
       return;
     }
     
-    // If editing, check if changed card number conflicts
     if (existingMember && existingMember.cardNumber !== formData.cardNumber && existingCardNumbers.includes(formData.cardNumber)) {
         setError(`Le numéro de carte ${formData.cardNumber} existe déjà.`);
         return;
@@ -93,7 +94,7 @@ export const MemberForm: React.FC<MemberFormProps> = ({ existingMember, onSave, 
       id: existingMember?.id || crypto.randomUUID(),
       firstName: formData.firstName!,
       lastName: formData.lastName!,
-      phone: formData.phone || '', // Allow empty for child if guardian present
+      phone: formData.phone || '', 
       role: formData.role as Role,
       gender: formData.gender as Gender,
       annualFee: Number(formData.annualFee),
