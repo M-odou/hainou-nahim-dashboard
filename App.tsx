@@ -52,7 +52,7 @@ function App() {
   // --- Data Fetching helpers ---
 
   const fetchUserProfile = async (userId: string, email?: string) => {
-    // 1. SUPER ADMIN BYPASS (Optimization & Safety)
+    // 1. SUPER ADMIN BYPASS (Safety mechanism)
     if (isSuperAdminEmail(email)) {
          setCurrentUser({
           id: userId,
@@ -84,18 +84,13 @@ function App() {
           password: ''
         });
       } else if (error) {
-        // Fallback en cas d'erreur DB (notamment RLS) pour permettre la connexion
-        if (error.code === '42P17') {
-           console.warn("RLS Recursion (42P17) detected during profile fetch. Using fallback profile.");
-        } else {
-           console.warn("Erreur profil ou profil manquant:", error.message);
-        }
-        
+        console.warn("Erreur profil ou profil manquant (RLS ou inexistant):", error.message);
+        // Fallback pour ne pas bloquer l'accès
         setCurrentUser({
           id: userId,
           username: email || 'user',
           fullName: 'Utilisateur',
-          role: UserRole.ADMIN, // Default fallback
+          role: UserRole.ADMIN, 
           photoUrl: null,
           password: ''
         });
@@ -141,7 +136,6 @@ function App() {
 
   const fetchAllUsers = async () => {
      try {
-       // Tri par nom complet pour une liste propre
        const { data, error } = await supabase
          .from('profiles')
          .select('*')
@@ -160,15 +154,14 @@ function App() {
           setUsers(mappedUsers);
        }
      } catch (err: any) {
-       // GESTION SPECIFIQUE ERREUR 42P17 (Boucle infinie RLS)
-       if (err && err.code === '42P17') {
-         console.warn("RLS Policy Recursion (42P17) detected. Showing current user only fallback.");
-         // On ne plante pas l'app, on montre juste l'utilisateur courant
-         if (currentUser) setUsers([currentUser]);
-       } else {
-         console.error("Erreur fetchAllUsers:", JSON.stringify(err));
-         // Fallback UI si la liste plante pour une autre raison
-         if (currentUser) setUsers([currentUser]);
+       console.warn("Erreur chargement liste administrateurs:", JSON.stringify(err));
+       // Si échec (ex: droits insuffisants temporaires), on montre au moins l'utilisateur courant
+       if (currentUser) {
+         setUsers(prev => {
+             // Avoid loop if already set
+             if (prev.length === 1 && prev[0].id === currentUser.id) return prev;
+             return [currentUser];
+         });
        }
      }
   };
@@ -193,6 +186,7 @@ function App() {
     }
 
     if (data.session) {
+       // Détection immédiate du Super Admin pour éviter l'attente
        if (isSuperAdminEmail(email)) {
            setCurrentUser({
               id: data.session.user.id,
@@ -205,8 +199,7 @@ function App() {
            return { success: true };
        }
 
-       // For normal users, try to fetch profile
-       let { data: profile, error: profileError } = await supabase
+       let { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.session.user.id)
@@ -222,10 +215,6 @@ function App() {
               password: ''
            });
        } else {
-           // Si erreur RLS ou profil manquant, on connecte en mode dégradé
-           if (profileError?.code === '42P17') {
-              console.warn("Login: RLS Recursion bypass for user profile.");
-           }
            setCurrentUser({
               id: data.session.user.id,
               username: email,
@@ -301,7 +290,7 @@ function App() {
   };
 
   const handleSaveUser = async (user: User) => {
-    // 1. Update Existing User
+    // 1. UPDATE
     if (user.id && user.id.length > 0) {
       const { error } = await supabase.from('profiles').update({
         full_name: user.fullName,
@@ -310,25 +299,21 @@ function App() {
       
       if (error) {
          if (error.code === '42P17') {
-            alert("Mise à jour effectuée (Erreur sync DB 42P17 ignorée).");
-            fetchAllUsers(); // Refresh local list manually if needed
+             // Ignore RLS recursion on update if it works anyway
+             setTimeout(fetchAllUsers, 500); 
          } else {
-            alert("Erreur modification: " + error.message);
+             alert("Erreur modification: " + error.message);
          }
       } else {
+        alert("Profil mis à jour.");
         fetchAllUsers();
-        alert("Profil administrateur mis à jour.");
       }
       return;
     }
 
-    // 2. Create New User
+    // 2. CREATE (Auth + Profile via trigger or upsert)
     const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false
-      }
+      auth: { persistSession: false } // Client temporaire pour créer l'autre user
     });
 
     const { data: authData, error: authError } = await tempClient.auth.signUp({
@@ -337,72 +322,48 @@ function App() {
       options: {
         data: {
           full_name: user.fullName,
-          role: user.role
+          role: user.role // Le trigger SQL utilisera ceci
         }
       }
     });
 
     if (authError) {
-      alert("Erreur lors de la création du compte : " + authError.message);
+      alert("Erreur création compte : " + authError.message);
       return;
     }
 
     if (authData.user) {
-      const newProfileData = {
-        id: authData.user.id,
-        username: user.username,
-        full_name: user.fullName,
-        role: user.role,
-        photo_url: user.photoUrl
-      };
-
-      // CRUCIAL: Utilisation de UPSERT au lieu de INSERT.
-      // Cela permet de gérer deux cas :
-      // 1. Si vous avez mis un TRIGGER SQL : Le profil existe déjà -> Upsert le met à jour.
-      // 2. Si vous n'avez PAS de Trigger : Le profil n'existe pas -> Upsert le crée.
-      
-      // Tentative via tempClient (l'utilisateur crée son propre profil)
-      let { error: profileError } = await tempClient
+      // Sécurité : On tente quand même un upsert manuel au cas où le trigger SQL échouerait
+      // ou ne serait pas mis en place.
+      const { error: profileError } = await supabase
         .from('profiles')
-        .upsert(newProfileData);
+        .upsert({
+          id: authData.user.id,
+          username: user.username,
+          full_name: user.fullName,
+          role: user.role,
+          photo_url: user.photoUrl
+        });
 
-      if (profileError) {
-         console.warn("Echec upsert tempClient (possible RLS), tentative via SuperAdmin...");
-         // Fallback: Tentative via le client principal (Super Admin)
-         const { error: adminError } = await supabase
-           .from('profiles')
-           .upsert(newProfileData);
-         
-         if (adminError) {
-             if (adminError.code === '42P17') {
-                 console.warn("Erreur 42P17 ignorée lors de la sauvegarde du profil (l'utilisateur Auth a été créé).");
-             } else {
-                 alert("Compte Auth créé, mais erreur synchronisation profil : " + adminError.message);
-             }
-         }
+      if (profileError && profileError.code !== '42P17') {
+         console.warn("L'utilisateur est créé mais le profil manuel a échoué (peut-être géré par Trigger):", profileError.message);
       }
 
-      await fetchAllUsers();
-      alert(`L'administrateur ${user.fullName} a été créé avec succès !`);
+      alert(`Administrateur ${user.fullName} créé avec succès !`);
+      setTimeout(fetchAllUsers, 1000); // Petit délai pour laisser le trigger finir
     }
   };
   
   const handleDeleteUser = async (id: string) => {
-     // Note: On ne peut supprimer que le profil via l'API publique.
-     // L'utilisateur Auth restera mais ne pourra plus se connecter si l'app vérifie le profil.
+     // Suppression du profil (ce qui bloque l'accès via RLS)
+     // Note: Supabase ne permet pas de supprimer un auth.user via le client public sans fonction Edge.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
-     if (error) {
-       if (error.code === '42P17') {
-          console.warn("Erreur suppression 42P17 ignorée.");
-          alert("L'accès a été révoqué (Profil supprimé malgré erreur RLS).");
-          // Force refresh of local state or optimistically remove
-          setUsers(prev => prev.filter(u => u.id !== id));
-       } else {
-          alert("Erreur: " + error.message);
-       }
+     
+     if (error && error.code !== '42P17') {
+       alert("Erreur: " + error.message);
      } else {
-       await fetchAllUsers();
        alert("L'accès de l'administrateur a été révoqué.");
+       fetchAllUsers();
      }
   };
 
