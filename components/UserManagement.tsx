@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Trash2, Edit2, Shield, UserPlus, Save, X, RefreshCw } from 'lucide-react';
+import { Trash2, Edit2, Shield, UserPlus, Save, X, RefreshCw, Mail } from 'lucide-react';
 
 interface UserManagementProps {
   users: User[];
@@ -40,14 +40,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser?.username || !editingUser?.fullName) {
-      setError("Le nom d'utilisateur et le nom complet sont requis.");
+      setError("L'email et le nom complet sont requis.");
       return;
     }
     
     // Check for duplicate username (if creating or changing username)
     const duplicate = users.find(u => u.username === editingUser.username && u.id !== editingUser.id);
     if (duplicate) {
-      setError("Cet identifiant est déjà utilisé.");
+      setError("Cet email est déjà utilisé par un autre administrateur.");
       return;
     }
 
@@ -56,12 +56,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
       return;
     }
 
+    // Validation email basique
+    if (!editingUser.username?.includes('@')) {
+      setError("Veuillez entrer une adresse email valide.");
+      return;
+    }
+
+    // On passe une chaîne vide pour l'ID si c'est une création, App.tsx s'occupera de la création Auth
     onSaveUser({
-      id: editingUser.id || crypto.randomUUID(),
+      id: editingUser.id || '', 
       username: editingUser.username,
       fullName: editingUser.fullName,
       role: editingUser.role as UserRole,
-      password: editingUser.password || 'temp1234', // Should keep old pass if empty on edit, but handled in App logic usually. Here we assume passed fully.
+      password: editingUser.password || '', 
       photoUrl: editingUser.photoUrl
     } as User);
     
@@ -74,7 +81,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Gestion des Accès</h2>
-          <p className="text-slate-500">Gérez les administrateurs de la plateforme.</p>
+          <p className="text-slate-500">Gérez les comptes administrateurs de la plateforme.</p>
         </div>
         <button 
           onClick={handleCreate}
@@ -87,15 +94,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
 
       {isFormOpen && (
         <div className="bg-white p-6 rounded-xl shadow-lg border border-brand-100 animate-in fade-in slide-in-from-top-4">
-          <h3 className="text-lg font-bold text-slate-800 mb-4">
-            {editingUser?.id ? 'Modifier Utilisateur' : 'Créer Utilisateur'}
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+             <h3 className="text-lg font-bold text-slate-800">
+              {editingUser?.id ? 'Modifier Utilisateur' : 'Créer un Compte Admin'}
+            </h3>
+            <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <X size={20} />
+            </button>
+          </div>
+         
           <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl">
-            {error && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+            {error && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-center gap-2">
+                <Shield size={14} />
+                {error}
+              </div>
+            )}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Nom complet</label>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-600 mb-1">Nom complet *</label>
                 <input 
                   type="text" 
                   value={editingUser?.fullName || ''}
@@ -104,6 +122,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                   placeholder="Ex: Moussa Diop"
                 />
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Email (Connexion) *</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input 
+                    type="email" 
+                    value={editingUser?.username || ''}
+                    onChange={e => setEditingUser(prev => ({...prev, username: e.target.value}))}
+                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
+                    placeholder="nom@exemple.com"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-600 mb-1">Rôle</label>
                 <select 
@@ -115,31 +148,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                   <option value={UserRole.SUPER_ADMIN}>Super Admin</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Identifiant</label>
-                <input 
-                  type="text" 
-                  value={editingUser?.username || ''}
-                  onChange={e => setEditingUser(prev => ({...prev, username: e.target.value}))}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
-                  placeholder="Ex: admin2"
-                />
-              </div>
-              <div>
+
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-600 mb-1">
-                  {editingUser?.id ? 'Nouveau mot de passe (optionnel)' : 'Mot de passe'}
+                  {editingUser?.id ? 'Réinitialiser mot de passe (Laisser vide pour conserver)' : 'Mot de passe *'}
                 </label>
                 <input 
                   type="password" 
                   value={editingUser?.password || ''}
                   onChange={e => setEditingUser(prev => ({...prev, password: e.target.value}))}
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
-                  placeholder="••••••••"
+                  placeholder={editingUser?.id ? "••••••••" : "Créer un mot de passe"}
                 />
+                {editingUser?.id && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Note : La modification du mot de passe d'un autre utilisateur n'est pas possible directement ici pour des raisons de sécurité. L'utilisateur devra utiliser "Mot de passe oublié".
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-4">
+            <div className="flex justify-end gap-3 mt-6 border-t border-slate-100 pt-4">
               <button 
                 type="button" 
                 onClick={() => setIsFormOpen(false)}
@@ -151,7 +180,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                 type="submit"
                 className="px-6 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors flex items-center gap-2"
               >
-                <Save size={18} /> Enregistrer
+                <Save size={18} /> 
+                {editingUser?.id ? 'Mettre à jour' : 'Créer le compte'}
               </button>
             </div>
           </form>
@@ -164,7 +194,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
             <tr>
               <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Utilisateur</th>
               <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Rôle</th>
-              <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Identifiant</th>
+              <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Email</th>
               <th className="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Actions</th>
             </tr>
           </thead>
@@ -177,13 +207,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                       {user.photoUrl ? (
                         <img src={user.photoUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        user.fullName.charAt(0)
+                        user.fullName.charAt(0).toUpperCase()
                       )}
                     </div>
-                    <span className="font-medium text-slate-800">{user.fullName}</span>
-                    {user.id === currentUser.id && (
-                      <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Vous</span>
-                    )}
+                    <div>
+                        <div className="font-medium text-slate-800">{user.fullName}</div>
+                        {user.id === currentUser.id && (
+                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Vous</span>
+                        )}
+                    </div>
                   </div>
                 </td>
                 <td className="p-4">

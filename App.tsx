@@ -8,7 +8,8 @@ import { MemberDetailModal } from './components/MemberDetailModal';
 import { UserManagement } from './components/UserManagement';
 import { Profile } from './components/Profile';
 import { Member, Role, Gender, User, UserRole } from './types';
-import { supabase } from './lib/supabaseClient';
+import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -214,31 +215,79 @@ function App() {
     }
   };
 
-  // User Management (Simplified for this demo: updating profiles table)
-  // Note: Creating new Auth users from client side requires specific setup or Edge Functions usually.
+  // User Management
   const handleSaveUser = async (user: User) => {
-    // For this demo, we assume we just update the profile data. 
-    // Creating a real Auth user usually happens via SignUp page or Admin API.
-    const { error } = await supabase.from('profiles').upsert({
-       id: user.id, // If creating, this might be tricky without Auth ID
-       username: user.username,
-       full_name: user.fullName,
-       role: user.role,
-       photo_url: user.photoUrl
-    });
-    
-    if (error) alert("Erreur: " + error.message);
-    else {
-      fetchAllUsers();
-      alert("Utilisateur mis à jour.");
+    if (user.id && user.id.length > 0) {
+      // --- MODIFICATION D'UN ADMIN EXISTANT ---
+      const { error } = await supabase.from('profiles').update({
+        full_name: user.fullName,
+        role: user.role,
+        username: user.username, // On met à jour l'email dans le profil, mais notez que l'Auth email reste l'ancien si non changé via API admin
+      }).eq('id', user.id);
+      
+      if (error) alert("Erreur modification: " + error.message);
+      else {
+        fetchAllUsers();
+        alert("Profil administrateur mis à jour.");
+      }
+    } else {
+      // --- CRÉATION D'UN NOUVEL ADMIN ---
+      
+      // 1. On utilise un client temporaire pour ne PAS déconnecter le Super Admin actuel
+      // car supabase.auth.signUp connecte automatiquement l'utilisateur.
+      const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false, // Important : ne pas stocker la session dans le navigateur
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        }
+      });
+
+      // 2. Création du compte dans Supabase Auth
+      const { data: authData, error: authError } = await tempClient.auth.signUp({
+        email: user.username,
+        password: user.password,
+        options: {
+          data: {
+            full_name: user.fullName
+          }
+        }
+      });
+
+      if (authError) {
+        alert("Erreur lors de la création du compte : " + authError.message);
+        return;
+      }
+
+      if (authData.user) {
+        // 3. Création de l'entrée dans la table 'profiles'
+        const { error: profileError } = await supabase.from('profiles').insert({
+          id: authData.user.id,
+          username: user.username,
+          full_name: user.fullName,
+          role: user.role,
+          photo_url: user.photoUrl
+        });
+
+        if (profileError) {
+          alert("Compte créé mais erreur profil : " + profileError.message);
+        } else {
+          fetchAllUsers();
+          alert(`L'administrateur ${user.fullName} a été créé avec succès ! Il peut maintenant se connecter.`);
+        }
+      }
     }
   };
   
   const handleDeleteUser = async (id: string) => {
-     // Warning: Deleting from profiles does not delete from Auth users without trigger
+     // Note : Supprimer le profil ne supprime pas le compte Auth sans Cloud Function.
+     // Pour cette démo, on supprime le profil, ce qui révoque l'accès aux données.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
      if (error) alert("Erreur: " + error.message);
-     else fetchAllUsers();
+     else {
+       fetchAllUsers();
+       alert("L'accès de l'administrateur a été révoqué.");
+     }
   };
 
   const handleUpdateProfile = async (updatedUser: User) => {
@@ -257,7 +306,7 @@ function App() {
        alert("Profil mis à jour");
     }
     
-    // Note: Password update requires supabase.auth.updateUser({ password: ... })
+    // Modification du mot de passe de l'utilisateur COURANT
     if (updatedUser.password) {
        const { error: passError } = await supabase.auth.updateUser({ password: updatedUser.password });
        if (passError) alert("Erreur mot de passe: " + passError.message);
