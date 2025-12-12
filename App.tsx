@@ -76,9 +76,12 @@ function App() {
           photoUrl: null,
           password: ''
         });
+      } else if (error) {
+        // Log propre de l'erreur si ce n'est pas juste "introuvable"
+        console.warn('Note: Profil non trouvé ou erreur DB:', JSON.stringify(error));
       }
     } catch (error) {
-      console.error('Erreur récupération profil:', error);
+      console.error('Erreur critique récupération profil:', JSON.stringify(error));
     } finally {
       setLoading(false);
     }
@@ -112,7 +115,7 @@ function App() {
         setMembers(mappedMembers);
       }
     } catch (error) {
-      console.error('Erreur récupération membres:', error);
+      console.error('Erreur récupération membres:', JSON.stringify(error));
     }
   };
 
@@ -132,7 +135,7 @@ function App() {
           setUsers(mappedUsers);
        }
      } catch (err) {
-       console.error(err);
+       console.error("Erreur fetchAllUsers:", JSON.stringify(err));
      }
   };
 
@@ -175,9 +178,12 @@ function App() {
              photo_url: null
           };
 
-          // Tentative de création (peut échouer si RLS bloque)
-          const { error: insertError } = await supabase.from('profiles').insert(newProfile);
-          if (insertError) console.error("Erreur tentative création profil:", insertError);
+          // Utilisation de UPSERT au lieu de INSERT pour éviter les erreurs de duplication si le profil existe mais est invisible
+          const { error: insertError } = await supabase.from('profiles').upsert(newProfile);
+          
+          if (insertError) {
+             console.error("Erreur tentative création/maj profil:", JSON.stringify(insertError));
+          }
 
           // Nouvelle tentative de lecture
           const retry = await supabase
@@ -209,7 +215,7 @@ function App() {
          await supabase.auth.signOut();
          return { 
            success: false, 
-           error: `Erreur d'accès au profil (Droits insuffisants).` 
+           error: `Erreur d'accès au profil (Droits insuffisants ou profil manquant).` 
          };
        }
        
