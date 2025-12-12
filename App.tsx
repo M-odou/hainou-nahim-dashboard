@@ -36,8 +36,11 @@ function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        fetchUserProfile(session.user.id);
-        fetchMembers();
+        // Only fetch if we don't have the user or if the ID changed
+        if (!currentUser || currentUser.id !== session.user.id) {
+            fetchUserProfile(session.user.id);
+            fetchMembers();
+        }
       } else {
         setCurrentUser(null);
         setLoading(false);
@@ -58,7 +61,11 @@ function App() {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+          console.error('Error fetching profile detail:', JSON.stringify(error));
+          // If we have a session but no profile, we can't really log them in fully as "User"
+          // We let the loading state finish so the UI can decide (likely show Login if currentUser is null)
+      }
 
       if (data) {
         setCurrentUser({
@@ -71,8 +78,7 @@ function App() {
         });
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      // Don't alert here to avoid spamming on page load, but login will catch it
+      console.error('Unexpected error fetching profile:', error);
     } finally {
       setLoading(false);
     }
@@ -107,7 +113,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching members:', error);
-      alert('Erreur lors du chargement des membres');
+      // alert('Erreur lors du chargement des membres'); // Removed alert to be less annoying on load
     }
   };
 
@@ -154,16 +160,61 @@ function App() {
     // VERIFICATION DU PROFIL : On vérifie immédiatement si le profil existe
     // Cela évite que l'utilisateur soit connecté (Auth) mais bloqué sur l'écran de login (App)
     if (data.session) {
-       const { data: profile, error: profileError } = await supabase
+       let { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.session.user.id)
         .single();
+       
+       // AUTO-REPARATION : Si le profil n'existe pas, on tente de le créer à la volée
+       if (!profile || profileError) {
+          console.log("Profil introuvable, tentative de création automatique...", profileError);
+          
+          const isSuperAdmin = email.trim().toLowerCase() === 'gueyemodougningue@gmail.com';
+          
+          const newProfile = {
+             id: data.session.user.id,
+             username: email,
+             full_name: isSuperAdmin ? 'Modou Gningue Gueye' : 'Administrateur',
+             role: isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.ADMIN,
+             photo_url: null
+          };
+
+          const { error: insertError } = await supabase.from('profiles').insert(newProfile);
+          
+          if (!insertError) {
+             // On réessaie de récupérer le profil après création
+             const retry = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', data.session.user.id)
+                .single();
+             profile = retry.data;
+             profileError = retry.error;
+          } else {
+             console.error("Echec de l'auto-création du profil:", JSON.stringify(insertError));
+          }
+       }
         
        if (profileError || !profile) {
          await supabase.auth.signOut();
-         console.error("Login Error: Profile not found", profileError);
-         return { success: false, error: "Connexion réussie mais profil introuvable. Veuillez contacter le support technique." };
+         console.error("Login Error: Profile not found details:", JSON.stringify(profileError));
+         return { 
+           success: false, 
+           error: `Connexion auth réussie, mais profil inaccessible. Erreur: ${profileError?.message || 'Inconnue'}` 
+         };
+       }
+       
+       // Manually set currentUser here to ensure immediate UI update
+       if (profile) {
+           setCurrentUser({
+              id: profile.id,
+              username: profile.username || email,
+              fullName: profile.full_name || '',
+              role: profile.role as UserRole,
+              photoUrl: profile.photo_url,
+              password: ''
+           });
        }
     }
 
