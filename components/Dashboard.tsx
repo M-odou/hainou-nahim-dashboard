@@ -1,23 +1,29 @@
 import React from 'react';
 import { 
-  Users, UserCheck, Baby, Wallet, TrendingUp 
+  Users, UserCheck, Baby, Wallet, TrendingUp, Shield
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   LineChart, Line
 } from 'recharts';
-import { Member, Gender, Role } from '../types';
+import { Member, Gender, Role, User, UserRole } from '../types';
 
 interface DashboardProps {
   members: Member[];
+  users?: User[];
+  currentUser?: User;
+  onNavigate?: (tab: 'dashboard' | 'members' | 'add' | 'profile' | 'users') => void;
 }
 
 // Updated colors to match the blue theme (Primary: #13395F)
 const COLORS = ['#13395F', '#f43f5e', '#3b82f6', '#f59e0b'];
 
-const StatCard = ({ title, value, icon: Icon, color, subtext }: any) => (
-  <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 flex items-start justify-between hover:shadow-md transition-shadow">
+const StatCard = ({ title, value, icon: Icon, color, subtext, onClick }: any) => (
+  <div 
+    onClick={onClick}
+    className={`bg-white rounded-xl p-6 shadow-sm border border-slate-100 flex items-start justify-between hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer hover:border-brand-200' : ''}`}
+  >
     <div>
       <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
       <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
@@ -29,7 +35,7 @@ const StatCard = ({ title, value, icon: Icon, color, subtext }: any) => (
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, users = [], currentUser, onNavigate }) => {
   // Calculations
   const totalMembers = members.length;
   const menCount = members.filter(m => m.gender === Gender.HOMME).length;
@@ -73,6 +79,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
     ? timelineData.filter((_, i) => i % Math.ceil(timelineData.length / 20) === 0)
     : timelineData;
 
+  const isSuperAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -97,6 +105,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
           color="bg-emerald-500" // Keep money green
           subtext="Total attendu"
         />
+        
+        {/* Affichage conditionnel : Si Super Admin, on affiche le nombre d'admins, sinon on affiche les catégories standards */}
+        {isSuperAdmin ? (
+          <StatCard 
+            title="Administrateurs" 
+            value={users.length} 
+            icon={Shield} 
+            color="bg-purple-600" 
+            subtext="Gérer les accès"
+            onClick={() => onNavigate && onNavigate('users')}
+          />
+        ) : (
+           <StatCard 
+            title="Enfants" 
+            value={childCount} 
+            icon={Baby} 
+            color="bg-indigo-500" 
+          />
+        )}
+
         <StatCard 
           title="Hommes" 
           value={menCount} 
@@ -108,12 +136,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
           value={womenCount} 
           icon={UserCheck} 
           color="bg-pink-500" 
-        />
-        <StatCard 
-          title="Enfants" 
-          value={childCount} 
-          icon={Baby} 
-          color="bg-indigo-500" 
         />
       </div>
 

@@ -141,24 +141,32 @@ function App() {
          .select('*')
          .order('full_name', { ascending: true });
 
-       if (error) throw error;
-       if (data) {
+       if (error) {
+           console.error("Supabase error fetching profiles:", error);
+           throw error;
+       }
+
+       if (data && data.length > 0) {
           const mappedUsers: User[] = data.map(u => ({
             id: u.id,
             username: u.username || 'user',
-            fullName: u.full_name,
-            role: u.role as UserRole,
+            fullName: u.full_name || 'Inconnu',
+            role: (u.role as UserRole) || UserRole.ADMIN,
             photoUrl: u.photo_url,
             password: ''
           }));
           setUsers(mappedUsers);
+       } else {
+         // Si la liste est vide (souvent dû à RLS qui bloque), on affiche au moins l'utilisateur courant
+         if (currentUser) {
+            setUsers([currentUser]);
+         }
        }
      } catch (err: any) {
        console.error("Erreur chargement liste administrateurs:", JSON.stringify(err));
-       // Fallback : Si erreur (ex: RLS), on affiche au moins l'utilisateur courant
+       // Fallback de sécurité
        if (currentUser) {
            setUsers(prev => {
-               // Évite les doublons ou boucles
                const exists = prev.find(u => u.id === currentUser.id);
                return exists ? prev : [currentUser];
            });
@@ -166,11 +174,12 @@ function App() {
      }
   };
 
+  // Chargement des utilisateurs : Au montage ET quand on change d'onglet vers 'users'
   useEffect(() => {
-    if (activeTab === 'users' && currentUser?.role === UserRole.SUPER_ADMIN) {
+    if (currentUser?.role === UserRole.SUPER_ADMIN) {
       fetchAllUsers();
     }
-  }, [activeTab, currentUser]);
+  }, [currentUser, activeTab]); 
 
 
   // --- Actions ---
@@ -415,7 +424,14 @@ function App() {
       onLogout={handleLogout}
       currentUser={currentUser}
     >
-      {activeTab === 'dashboard' && <Dashboard members={members} />}
+      {activeTab === 'dashboard' && (
+        <Dashboard 
+          members={members} 
+          users={users} 
+          currentUser={currentUser}
+          onNavigate={(tab) => setActiveTab(tab as any)}
+        />
+      )}
       
       {activeTab === 'members' && (
         <div className="space-y-6">
