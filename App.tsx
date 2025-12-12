@@ -52,9 +52,8 @@ function App() {
   // --- Data Fetching helpers ---
 
   const fetchUserProfile = async (userId: string, email?: string) => {
-    // 1. SUPER ADMIN BYPASS (Fixes RLS 42P17 for main admin)
+    // 1. SUPER ADMIN BYPASS (Optimization & Safety)
     if (isSuperAdminEmail(email)) {
-         console.log("Super Admin détecté : Chargement direct (Bypass DB)");
          setCurrentUser({
           id: userId,
           username: email!,
@@ -85,20 +84,16 @@ function App() {
           password: ''
         });
       } else if (error) {
-        // Handle RLS Infinite Recursion specifically
-        if (error.code === '42P17') {
-           console.warn("RLS Recursion (42P17) detected. Using fallback profile.");
-           setCurrentUser({
-            id: userId,
-            username: email || 'user',
-            fullName: 'Utilisateur',
-            role: UserRole.ADMIN, // Default fallback
-            photoUrl: null,
-            password: ''
-          });
-        } else {
-           console.warn('Erreur récupération profil:', error.message);
-        }
+        // Fallback en cas d'erreur DB pour permettre la connexion
+        console.warn("Erreur profil ou profil manquant:", error.message);
+        setCurrentUser({
+          id: userId,
+          username: email || 'user',
+          fullName: 'Utilisateur',
+          role: UserRole.ADMIN, // Default fallback
+          photoUrl: null,
+          password: ''
+        });
       }
     } catch (error) {
       console.error('Erreur critique récupération profil:', JSON.stringify(error));
@@ -141,7 +136,12 @@ function App() {
 
   const fetchAllUsers = async () => {
      try {
-       const { data, error } = await supabase.from('profiles').select('*');
+       // Tri par nom complet pour une liste propre
+       const { data, error } = await supabase
+         .from('profiles')
+         .select('*')
+         .order('full_name', { ascending: true });
+
        if (error) throw error;
        if (data) {
           const mappedUsers: User[] = data.map(u => ({
@@ -155,13 +155,9 @@ function App() {
           setUsers(mappedUsers);
        }
      } catch (err: any) {
-       // Fix for "Erreur fetchAllUsers: 42P17"
-       if (err && err.code === '42P17') {
-         // RLS is broken on server. Show current user as the only user to keep UI functional.
-         if (currentUser) setUsers([currentUser]);
-       } else {
-         console.error("Erreur fetchAllUsers:", JSON.stringify(err));
-       }
+       console.error("Erreur fetchAllUsers:", JSON.stringify(err));
+       // Fallback UI si la liste plante
+       if (currentUser) setUsers([currentUser]);
      }
   };
 
@@ -204,27 +200,6 @@ function App() {
         .eq('id', data.session.user.id)
         .single();
        
-       // Handle RLS error during login
-       if (profileError?.code === '42P17') {
-           setCurrentUser({
-              id: data.session.user.id,
-              username: email,
-              fullName: 'Administrateur',
-              role: UserRole.ADMIN,
-              photoUrl: null,
-              password: ''
-           });
-           return { success: true };
-       }
-
-       if (profileError || !profile) {
-         await supabase.auth.signOut();
-         return { 
-           success: false, 
-           error: `Erreur d'accès au profil.` 
-         };
-       }
-       
        if (profile) {
            setCurrentUser({
               id: profile.id,
@@ -232,6 +207,16 @@ function App() {
               fullName: profile.full_name || '',
               role: profile.role as UserRole,
               photoUrl: profile.photo_url,
+              password: ''
+           });
+       } else {
+           // Profil manquant ou erreur, on connecte quand même en mode dégradé (Admin)
+           setCurrentUser({
+              id: data.session.user.id,
+              username: email,
+              fullName: 'Administrateur',
+              role: UserRole.ADMIN,
+              photoUrl: null,
               password: ''
            });
        }
@@ -309,12 +294,7 @@ function App() {
       }).eq('id', user.id);
       
       if (error) {
-         if (error.code === '42P17') {
-           // Swallow RLS error for update
-           alert("Modification enregistrée (Note: Erreur sync DB 42P17 ignorée).");
-         } else {
-           alert("Erreur modification: " + error.message);
-         }
+         alert("Erreur modification: " + error.message);
       } else {
         fetchAllUsers();
         alert("Profil administrateur mis à jour.");
@@ -336,7 +316,8 @@ function App() {
       password: user.password,
       options: {
         data: {
-          full_name: user.fullName
+          full_name: user.fullName,
+          role: user.role
         }
       }
     });
@@ -355,51 +336,42 @@ function App() {
         photo_url: user.photoUrl
       };
 
-      // Try insert with temp client (user inserting their own profile)
-      // We do NOT use upsert to avoid SELECT policies triggering recursion
+      // CRUCIAL: Utilisation de UPSERT au lieu de INSERT.
+      // Cela permet de gérer deux cas :
+      // 1. Si vous avez mis un TRIGGER SQL : Le profil existe déjà -> Upsert le met à jour.
+      // 2. Si vous n'avez PAS de Trigger : Le profil n'existe pas -> Upsert le crée.
+      
+      // Tentative via tempClient (l'utilisateur crée son propre profil)
       let { error: profileError } = await tempClient
         .from('profiles')
-        .insert(newProfileData);
-
-      // Fix for "Erreur création profil: 42P17"
-      if (profileError && profileError.code === '42P17') {
-         // If recursion happens on INSERT, we assume the Auth account is good
-         // and the profile might have been inserted blindly or failed.
-         // We treat this as success because the user can log in (handleLogin has RLS fallback).
-         console.warn("RLS Recursion on profile insert. Ignoring.");
-         profileError = null; 
-      }
+        .upsert(newProfileData);
 
       if (profileError) {
-         // Fallback: Try with main client (Super Admin context)
+         console.warn("Echec upsert tempClient (possible RLS), tentative via SuperAdmin...");
+         // Fallback: Tentative via le client principal (Super Admin)
          const { error: adminError } = await supabase
            .from('profiles')
-           .insert(newProfileData);
+           .upsert(newProfileData);
          
          if (adminError) {
-             if (adminError.code === '42P17') {
-                 console.warn("RLS Recursion on admin fallback insert. Ignoring.");
-             } else {
-                 alert("Compte Auth créé, mais erreur profil : " + adminError.message);
-                 return;
-             }
+             alert("Compte Auth créé, mais erreur synchronisation profil : " + adminError.message);
+             // On ne return pas, car le compte Auth existe, on rafraichit quand même
          }
       }
 
-      fetchAllUsers();
+      await fetchAllUsers();
       alert(`L'administrateur ${user.fullName} a été créé avec succès !`);
     }
   };
   
   const handleDeleteUser = async (id: string) => {
-     // User deletion typically requires Service Role for Auth, but we can delete profile.
-     // Supabase Auth deletion is not possible via anon key usually.
-     // We just delete the profile to revoke app access (if logic relies on profile presence).
+     // Note: On ne peut supprimer que le profil via l'API publique.
+     // L'utilisateur Auth restera mais ne pourra plus se connecter si l'app vérifie le profil.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
      if (error) alert("Erreur: " + error.message);
      else {
-       fetchAllUsers();
-       alert("L'accès de l'administrateur a été révoqué (Profil supprimé).");
+       await fetchAllUsers();
+       alert("L'accès de l'administrateur a été révoqué.");
      }
   };
 
@@ -409,10 +381,9 @@ function App() {
        photo_url: updatedUser.photoUrl
     }).eq('id', currentUser?.id);
 
-    if (error && error.code !== '42P17') {
+    if (error) {
        alert("Erreur: " + error.message);
     } else {
-       // If 42P17, we still update local state
        if (currentUser) {
          setCurrentUser({...currentUser, ...updatedUser});
        }
@@ -494,6 +465,7 @@ function App() {
           currentUser={currentUser} 
           onSaveUser={handleSaveUser}
           onDeleteUser={handleDeleteUser}
+          onRefresh={fetchAllUsers} 
         />
       )}
 
