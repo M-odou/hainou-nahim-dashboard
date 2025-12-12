@@ -142,7 +142,6 @@ function App() {
          .order('full_name', { ascending: true });
 
        if (error) {
-           console.error("Supabase error fetching profiles:", error);
            throw error;
        }
 
@@ -163,8 +162,14 @@ function App() {
          }
        }
      } catch (err: any) {
-       console.error("Erreur chargement liste administrateurs:", JSON.stringify(err));
-       // Fallback de sécurité
+       console.error("Erreur chargement liste administrateurs:", err);
+       
+       // DÉTECTION SPÉCIFIQUE DE L'ERREUR DE RÉCURSION
+       if (err.message && (err.message.includes('infinite recursion') || err.code === '42P17')) {
+           alert("⚠️ ERREUR CRITIQUE SUPABASE : RÉCURSION INFINIE\n\nLes règles de sécurité (RLS) de votre base de données créent une boucle infinie.\n\nVeuillez exécuter le fichier 'supabase_rls_fix.sql' (inclus dans le projet) via l'éditeur SQL de Supabase pour corriger ce problème.");
+       }
+
+       // Fallback de sécurité pour ne pas laisser l'écran vide
        if (currentUser) {
            setUsers(prev => {
                const exists = prev.find(u => u.id === currentUser.id);
