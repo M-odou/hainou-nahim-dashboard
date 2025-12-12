@@ -1,13 +1,13 @@
 import React from 'react';
 import { 
-  Users, UserCheck, Baby, Wallet, TrendingUp, Shield
+  Users, UserCheck, Baby, Wallet, TrendingUp
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   LineChart, Line
 } from 'recharts';
-import { Member, Gender, Role, User, UserRole } from '../types';
+import { Member, Gender, Role, User } from '../types';
 
 interface DashboardProps {
   members: Member[];
@@ -35,7 +35,7 @@ const StatCard = ({ title, value, icon: Icon, color, subtext, onClick }: any) =>
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, users = [], currentUser, onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members }) => {
   // Calculations
   const totalMembers = members.length;
   const menCount = members.filter(m => m.gender === Gender.HOMME).length;
@@ -79,8 +79,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, users = [], curre
     ? timelineData.filter((_, i) => i % Math.ceil(timelineData.length / 20) === 0)
     : timelineData;
 
-  const isSuperAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -106,24 +104,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, users = [], curre
           subtext="Total attendu"
         />
         
-        {/* Affichage conditionnel : Si Super Admin, on affiche le nombre d'admins, sinon on affiche les catégories standards */}
-        {isSuperAdmin ? (
-          <StatCard 
-            title="Administrateurs" 
-            value={users.length} 
-            icon={Shield} 
-            color="bg-purple-600" 
-            subtext="Gérer les accès"
-            onClick={() => onNavigate && onNavigate('users')}
-          />
-        ) : (
-           <StatCard 
-            title="Enfants" 
-            value={childCount} 
-            icon={Baby} 
-            color="bg-indigo-500" 
-          />
-        )}
+        <StatCard 
+          title="Enfants" 
+          value={childCount} 
+          icon={Baby} 
+          color="bg-indigo-500" 
+        />
 
         <StatCard 
           title="Hommes" 
