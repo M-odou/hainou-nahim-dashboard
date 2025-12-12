@@ -84,7 +84,7 @@ function App() {
           password: ''
         });
       } else if (error) {
-        console.warn("Erreur profil ou profil manquant (RLS ou inexistant):", error.message);
+        console.warn("Erreur profil ou profil manquant:", error.message);
         // Fallback pour ne pas bloquer l'accès
         setCurrentUser({
           id: userId,
@@ -154,15 +154,7 @@ function App() {
           setUsers(mappedUsers);
        }
      } catch (err: any) {
-       console.warn("Erreur chargement liste administrateurs:", JSON.stringify(err));
-       // Si échec (ex: droits insuffisants temporaires), on montre au moins l'utilisateur courant
-       if (currentUser) {
-         setUsers(prev => {
-             // Avoid loop if already set
-             if (prev.length === 1 && prev[0].id === currentUser.id) return prev;
-             return [currentUser];
-         });
-       }
+       console.error("Erreur chargement liste administrateurs:", JSON.stringify(err));
      }
   };
 
@@ -298,12 +290,7 @@ function App() {
       }).eq('id', user.id);
       
       if (error) {
-         if (error.code === '42P17') {
-             // Ignore RLS recursion on update if it works anyway
-             setTimeout(fetchAllUsers, 500); 
-         } else {
-             alert("Erreur modification: " + error.message);
-         }
+         alert("Erreur modification: " + error.message);
       } else {
         alert("Profil mis à jour.");
         fetchAllUsers();
@@ -334,7 +321,6 @@ function App() {
 
     if (authData.user) {
       // Sécurité : On tente quand même un upsert manuel au cas où le trigger SQL échouerait
-      // ou ne serait pas mis en place.
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
@@ -345,21 +331,20 @@ function App() {
           photo_url: user.photoUrl
         });
 
-      if (profileError && profileError.code !== '42P17') {
-         console.warn("L'utilisateur est créé mais le profil manuel a échoué (peut-être géré par Trigger):", profileError.message);
+      if (profileError) {
+         console.warn("Info: Upsert manuel échoué (Probablement déjà géré par le Trigger):", profileError.message);
       }
 
       alert(`Administrateur ${user.fullName} créé avec succès !`);
-      setTimeout(fetchAllUsers, 1000); // Petit délai pour laisser le trigger finir
+      setTimeout(fetchAllUsers, 1000); 
     }
   };
   
   const handleDeleteUser = async (id: string) => {
      // Suppression du profil (ce qui bloque l'accès via RLS)
-     // Note: Supabase ne permet pas de supprimer un auth.user via le client public sans fonction Edge.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
      
-     if (error && error.code !== '42P17') {
+     if (error) {
        alert("Erreur: " + error.message);
      } else {
        alert("L'accès de l'administrateur a été révoqué.");
@@ -373,7 +358,7 @@ function App() {
        photo_url: updatedUser.photoUrl
     }).eq('id', currentUser?.id);
 
-    if (error && error.code !== '42P17') {
+    if (error) {
        alert("Erreur: " + error.message);
     } else {
        if (currentUser) {
