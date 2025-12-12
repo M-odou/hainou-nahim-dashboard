@@ -63,7 +63,7 @@ function App() {
       if (data) {
         setCurrentUser({
           id: data.id,
-          username: data.username || '', // or email
+          username: data.username || '', // maps to email
           fullName: data.full_name || '',
           role: data.role as UserRole,
           photoUrl: data.photo_url,
@@ -222,7 +222,7 @@ function App() {
       const { error } = await supabase.from('profiles').update({
         full_name: user.fullName,
         role: user.role,
-        username: user.username, // On met à jour l'email dans le profil, mais notez que l'Auth email reste l'ancien si non changé via API admin
+        // username: user.username, // NE PAS METTRE À JOUR L'EMAIL (USERNAME) pour éviter desync avec Auth
       }).eq('id', user.id);
       
       if (error) alert("Erreur modification: " + error.message);
@@ -270,10 +270,10 @@ function App() {
         });
 
         if (profileError) {
-          alert("Compte créé mais erreur profil : " + profileError.message);
+          alert("Compte Auth créé mais erreur profil : " + profileError.message);
         } else {
           fetchAllUsers();
-          alert(`L'administrateur ${user.fullName} a été créé avec succès ! Il peut maintenant se connecter.`);
+          alert(`L'administrateur ${user.fullName} a été créé avec succès !`);
         }
       }
     }
@@ -317,7 +317,7 @@ function App() {
   const existingCardNumbers = members.map(m => m.cardNumber);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-brand-600">Chargement...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-brand-600 animate-pulse">Chargement de l'application...</div>;
   }
 
   if (!currentUser) {

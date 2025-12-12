@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Trash2, Edit2, Shield, UserPlus, Save, X, RefreshCw, Mail } from 'lucide-react';
+import { Trash2, Edit2, Shield, UserPlus, Save, X, RefreshCw, Mail, Lock } from 'lucide-react';
 
 interface UserManagementProps {
   users: User[];
@@ -44,11 +44,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
       return;
     }
     
-    // Check for duplicate username (if creating or changing username)
-    const duplicate = users.find(u => u.username === editingUser.username && u.id !== editingUser.id);
-    if (duplicate) {
-      setError("Cet email est déjà utilisé par un autre administrateur.");
-      return;
+    // Check for duplicate username (if creating)
+    if (!editingUser.id) {
+        const duplicate = users.find(u => u.username === editingUser.username);
+        if (duplicate) {
+          setError("Cet email est déjà utilisé par un autre administrateur.");
+          return;
+        }
     }
 
     if (!editingUser.id && !editingUser.password) {
@@ -124,15 +126,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Email (Connexion) *</label>
+                <label className="block text-sm font-medium text-slate-600 mb-1">
+                    Email (Connexion) {editingUser?.id && <span className="text-xs text-slate-400 font-normal ml-1">(Non modifiable)</span>} *
+                </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  {editingUser?.id ? (
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  ) : (
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  )}
                   <input 
                     type="email" 
                     value={editingUser?.username || ''}
                     onChange={e => setEditingUser(prev => ({...prev, username: e.target.value}))}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
+                    className={`w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none ${
+                        editingUser?.id 
+                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed' 
+                        : 'bg-white focus:ring-2 focus:ring-brand-200'
+                    }`}
                     placeholder="nom@exemple.com"
+                    disabled={!!editingUser?.id}
+                    title={editingUser?.id ? "Pour changer l'email, veuillez créer un nouveau compte." : ""}
                   />
                 </div>
               </div>
@@ -142,7 +156,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                 <select 
                   value={editingUser?.role}
                   onChange={e => setEditingUser(prev => ({...prev, role: e.target.value as UserRole}))}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
+                  className="w-full px-4 py-2 border border-slate-200 bg-white rounded-lg focus:ring-2 focus:ring-brand-200 outline-none"
                 >
                   <option value={UserRole.ADMIN}>Administrateur</option>
                   <option value={UserRole.SUPER_ADMIN}>Super Admin</option>
@@ -162,7 +176,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                 />
                 {editingUser?.id && (
                   <p className="text-xs text-amber-600 mt-1">
-                    Note : La modification du mot de passe d'un autre utilisateur n'est pas possible directement ici pour des raisons de sécurité. L'utilisateur devra utiliser "Mot de passe oublié".
+                    Note : Pour modifier le mot de passe d'un utilisateur, celui-ci peut aussi utiliser la fonction "Mot de passe oublié" à la connexion.
                   </p>
                 )}
               </div>
@@ -200,10 +214,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map(user => (
-              <tr key={user.id} className="hover:bg-slate-50/80">
+              <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold overflow-hidden">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold overflow-hidden border-2 ${
+                        user.role === UserRole.SUPER_ADMIN ? 'border-purple-200 bg-purple-100 text-purple-700' : 'border-slate-100 bg-slate-100 text-slate-600'
+                    }`}>
                       {user.photoUrl ? (
                         <img src={user.photoUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
@@ -211,10 +227,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, currentUs
                       )}
                     </div>
                     <div>
-                        <div className="font-medium text-slate-800">{user.fullName}</div>
-                        {user.id === currentUser.id && (
-                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Vous</span>
-                        )}
+                        <div className="font-medium text-slate-800 flex items-center gap-2">
+                            {user.fullName}
+                            {user.id === currentUser.id && (
+                                <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-semibold border border-brand-200">Vous</span>
+                            )}
+                        </div>
                     </div>
                   </div>
                 </td>
