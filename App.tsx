@@ -72,6 +72,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // Don't alert here to avoid spamming on page load, but login will catch it
     } finally {
       setLoading(false);
     }
@@ -149,6 +150,23 @@ function App() {
     if (error) {
       return { success: false, error: error.message };
     }
+
+    // VERIFICATION DU PROFIL : On vérifie immédiatement si le profil existe
+    // Cela évite que l'utilisateur soit connecté (Auth) mais bloqué sur l'écran de login (App)
+    if (data.session) {
+       const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.session.user.id)
+        .single();
+        
+       if (profileError || !profile) {
+         await supabase.auth.signOut();
+         console.error("Login Error: Profile not found", profileError);
+         return { success: false, error: "Connexion réussie mais profil introuvable. Veuillez contacter le support technique." };
+       }
+    }
+
     return { success: true };
   };
 
