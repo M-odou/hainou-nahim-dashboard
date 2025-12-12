@@ -332,10 +332,18 @@ function App() {
         });
 
       if (profileError) {
-         console.warn("Info: Upsert manuel échoué (Probablement déjà géré par le Trigger):", profileError.message);
+         console.warn("Info: Upsert manuel échoué:", profileError.message);
       }
 
-      alert(`Administrateur ${user.fullName} créé avec succès !`);
+      // Amélioration de l'UX pour informer sur l'état de l'email
+      if (authData.session) {
+          // Si on a une session, c'est que 'Confirm Email' est désactivé -> C'est parfait
+          alert(`Administrateur ${user.fullName} créé et ACTIF immédiatement !`);
+      } else {
+          // Si pas de session, 'Confirm Email' est activé
+          alert(`Administrateur ${user.fullName} créé ! \n\n⚠️ ATTENTION : L'option "Confirm Email" est active sur Supabase.\nL'utilisateur doit cliquer sur le lien reçu par email pour se connecter.\n\nPour une connexion immédiate, désactivez "Confirm Email" dans le tableau de bord Supabase.`);
+      }
+
       setTimeout(fetchAllUsers, 1000); 
     }
   };
