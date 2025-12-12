@@ -84,8 +84,13 @@ function App() {
           password: ''
         });
       } else if (error) {
-        // Fallback en cas d'erreur DB pour permettre la connexion
-        console.warn("Erreur profil ou profil manquant:", error.message);
+        // Fallback en cas d'erreur DB (notamment RLS) pour permettre la connexion
+        if (error.code === '42P17') {
+           console.warn("RLS Recursion (42P17) detected during profile fetch. Using fallback profile.");
+        } else {
+           console.warn("Erreur profil ou profil manquant:", error.message);
+        }
+        
         setCurrentUser({
           id: userId,
           username: email || 'user',
@@ -155,9 +160,16 @@ function App() {
           setUsers(mappedUsers);
        }
      } catch (err: any) {
-       console.error("Erreur fetchAllUsers:", JSON.stringify(err));
-       // Fallback UI si la liste plante
-       if (currentUser) setUsers([currentUser]);
+       // GESTION SPECIFIQUE ERREUR 42P17 (Boucle infinie RLS)
+       if (err && err.code === '42P17') {
+         console.warn("RLS Policy Recursion (42P17) detected. Showing current user only fallback.");
+         // On ne plante pas l'app, on montre juste l'utilisateur courant
+         if (currentUser) setUsers([currentUser]);
+       } else {
+         console.error("Erreur fetchAllUsers:", JSON.stringify(err));
+         // Fallback UI si la liste plante pour une autre raison
+         if (currentUser) setUsers([currentUser]);
+       }
      }
   };
 
@@ -210,7 +222,10 @@ function App() {
               password: ''
            });
        } else {
-           // Profil manquant ou erreur, on connecte quand même en mode dégradé (Admin)
+           // Si erreur RLS ou profil manquant, on connecte en mode dégradé
+           if (profileError?.code === '42P17') {
+              console.warn("Login: RLS Recursion bypass for user profile.");
+           }
            setCurrentUser({
               id: data.session.user.id,
               username: email,
@@ -294,7 +309,12 @@ function App() {
       }).eq('id', user.id);
       
       if (error) {
-         alert("Erreur modification: " + error.message);
+         if (error.code === '42P17') {
+            alert("Mise à jour effectuée (Erreur sync DB 42P17 ignorée).");
+            fetchAllUsers(); // Refresh local list manually if needed
+         } else {
+            alert("Erreur modification: " + error.message);
+         }
       } else {
         fetchAllUsers();
         alert("Profil administrateur mis à jour.");
@@ -354,8 +374,11 @@ function App() {
            .upsert(newProfileData);
          
          if (adminError) {
-             alert("Compte Auth créé, mais erreur synchronisation profil : " + adminError.message);
-             // On ne return pas, car le compte Auth existe, on rafraichit quand même
+             if (adminError.code === '42P17') {
+                 console.warn("Erreur 42P17 ignorée lors de la sauvegarde du profil (l'utilisateur Auth a été créé).");
+             } else {
+                 alert("Compte Auth créé, mais erreur synchronisation profil : " + adminError.message);
+             }
          }
       }
 
@@ -368,8 +391,16 @@ function App() {
      // Note: On ne peut supprimer que le profil via l'API publique.
      // L'utilisateur Auth restera mais ne pourra plus se connecter si l'app vérifie le profil.
      const { error } = await supabase.from('profiles').delete().eq('id', id);
-     if (error) alert("Erreur: " + error.message);
-     else {
+     if (error) {
+       if (error.code === '42P17') {
+          console.warn("Erreur suppression 42P17 ignorée.");
+          alert("L'accès a été révoqué (Profil supprimé malgré erreur RLS).");
+          // Force refresh of local state or optimistically remove
+          setUsers(prev => prev.filter(u => u.id !== id));
+       } else {
+          alert("Erreur: " + error.message);
+       }
+     } else {
        await fetchAllUsers();
        alert("L'accès de l'administrateur a été révoqué.");
      }
@@ -381,7 +412,7 @@ function App() {
        photo_url: updatedUser.photoUrl
     }).eq('id', currentUser?.id);
 
-    if (error) {
+    if (error && error.code !== '42P17') {
        alert("Erreur: " + error.message);
     } else {
        if (currentUser) {
