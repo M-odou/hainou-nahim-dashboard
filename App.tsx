@@ -155,6 +155,14 @@ function App() {
        }
      } catch (err: any) {
        console.error("Erreur chargement liste administrateurs:", JSON.stringify(err));
+       // Fallback : Si erreur (ex: RLS), on affiche au moins l'utilisateur courant
+       if (currentUser) {
+           setUsers(prev => {
+               // Évite les doublons ou boucles
+               const exists = prev.find(u => u.id === currentUser.id);
+               return exists ? prev : [currentUser];
+           });
+       }
      }
   };
 
@@ -332,7 +340,7 @@ function App() {
         });
 
       if (profileError) {
-         console.warn("Info: Upsert manuel échoué:", profileError.message);
+         console.warn("Info: Upsert manuel échoué (Probablement déjà géré par le Trigger):", profileError.message);
       }
 
       // Amélioration de l'UX pour informer sur l'état de l'email
